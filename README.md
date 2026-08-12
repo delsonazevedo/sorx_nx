@@ -2,7 +2,7 @@
 <h1 align="center">Streets of Rage X · Nintendo Switch port</h1>
 
 A wrapper/loader that runs the **Android release of Streets of Rage X**
-(the OpenBOR fan-game) on the Nintendo Switch. It loads the Android
+(the [OpenBOR fan-game](https://www.chronocrash.com/forum/resources/streets-of-rage-x-windows-android.274/)) on the Nintendo Switch. It loads the Android
 `arm64-v8a` binaries straight from `switch/sorx_nx/` (`libhidapi.so`,
 `libSDL2.so`, `libopenbor.so`), provides a minimal Android-like environment
 (fake JNI, a bionic→newlib libc shim, an EGL/GLES import bridge, and a
