@@ -1,0 +1,11 @@
+/release
+/build
+/.tmp
+*.elf
+*.lst
+*.nacp
+*.nro
+*.map
+*.apk
+*.sh
+*.set
