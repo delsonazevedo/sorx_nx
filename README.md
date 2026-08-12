@@ -54,7 +54,7 @@ You need devkitA64 (devkitPro) with these packages:
 - <b>fgsfds</b>, <b>Andy Nguyen</b> and <b>NaGaa95</b> — the Switch so-loader
   groundwork (`so_util.c`, the fake-JNI object model, the libc shim) this
   wrapper is built on, via the NBA Jam Switch wrapper lineage.
-- <b>Kartus</b> — for  Streets of Rage X Game.
+- <b>Kratus</b> — for  Streets of Rage X Game.
 
 ### Legal
 
