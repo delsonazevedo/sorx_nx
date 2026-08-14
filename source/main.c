@@ -286,6 +286,7 @@ static PadState pad;
 static struct { u64 sw; int key; } s_btnmap[] = {
   { HidNpadButton_A,      AKEYCODE_A },       // FIRE1 -> confirm/attack
   { HidNpadButton_X,      AKEYCODE_S },       // FIRE2
+  { HidNpadButton_B,      AKEYCODE_S },       // FIRE2 (matches stock OpenBOR Switch default)
   { HidNpadButton_Y,      AKEYCODE_Z },       // FIRE3
   { HidNpadButton_L,      AKEYCODE_X },       // FIRE4
   { HidNpadButton_R,      AKEYCODE_D },       // FIRE5
