@@ -30,6 +30,7 @@
 #include "patch.h"
 #include "egl_shim.h"
 #include "libc_shim.h"
+#include "gpuarena.h"
 
 static void *heap_so_base = NULL;
 static size_t heap_so_limit = 0;
@@ -512,6 +513,13 @@ int main(void) {
   so_free_temp(&sdl2_mod);
   so_free_temp(&openbor_mod);
   debugPrintf("== init_arrays done ==\n");
+
+  // Arm the GPU arena only now: everything before this point (so_load's own
+  // heap arena, the pak's ~395MB full-file cache memalign) is excluded from
+  // it anyway by size (see gpuarena.c's GPUA_MAX), but matching cloverpit_nx's
+  // proven placement -- after module loading, before anything starts making
+  // real GL calls -- costs nothing and keeps the same margin of safety.
+  gpua_enable();
 
   jni_init();
 

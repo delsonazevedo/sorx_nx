@@ -451,20 +451,34 @@ static const char *pak_alias_real(const char *path) {
 // the pixel count) got real video playing and visible on-device (after also
 // fixing a crash, a GL state leak, and a stale-texture-id bug this exposed
 // along the way -- all still in place below, genuine fixes independent of
-// whether real video content is ever actually used), but a driver-level
-// hang (confirmed via paired ENTRY/RETURNED GL tracing in imports.c: the
-// real glDrawArrays() call itself, invoked from inside SDL_RenderPresent's
-// own internal batch flush, simply never returns) surfaces reliably a few
-// seconds after the first video whose own completion hands control back to
-// interactive engine code -- GPU resource churn from repeatedly creating and
-// destroying real YUV textures across a run, most likely. That's inside
-// Mesa/nouveau, not fixable from here. DISABLED (empty table -- every path
-// falls through to the existing, always-safe stub-empty behavior below) as
-// of that finding; the mechanism itself, and everything built on top of it,
-// is left in place rather than ripped out in case a future attempt (a
-// different resolution, a texture-pooling strategy that avoids the create/
-// destroy churn, or simply a fixed driver) wants to pick this back up.
+// whether real video content is ever actually used).
+//
+// RE-ENABLED after a driver-level hang (confirmed via paired ENTRY/RETURNED
+// GL tracing in imports.c: the real glDrawArrays() call itself, invoked from
+// inside SDL_RenderPresent's own internal batch flush, simply never
+// returns) got root-caused instead of merely worked around: GPU resource
+// churn from repeatedly creating and destroying real YUV textures across a
+// run fragments newlib's general heap, which is what libdrm_nouveau's own
+// memalign(0x1000, ...) calls for every GPU buffer draw from -- the same
+// symptom cloverpit_nx hit and fixed with a dedicated contiguous arena for
+// exactly that allocation shape (see gpuarena.c, ported from there).
+//
+// EMPTIED AGAIN, temporarily, to test the original native 1920x1080 bytes
+// directly (vpak_open_virtual()/vpak_materialize() no longer stub webm
+// either -- see their own comments) now that the driver hang has a real
+// fix. Re-populate this table (the 9 entries are still below, commented
+// out) to go back to the low-res replacements if native resolution
+// reproduces the earlier confirmed decode-time stall instead.
 static const PakAlias s_video_overrides[] = {
+  // { "data/videos/blank.webm", "Videos/blank.webm" },
+  // { "data/videos/intro.webm", "Videos/intro.webm" },
+  // { "data/videos/logo_sega.webm", "Videos/logo_sega.webm" },
+  // { "data/videos/logo_fgames.webm", "Videos/logo_fgames.webm" },
+  // { "data/videos/logo_openbor.webm", "Videos/logo_openbor.webm" },
+  // { "data/videos/start_english.webm", "Videos/start_english.webm" },
+  // { "data/videos/start_english_classic.webm", "Videos/start_english_classic.webm" },
+  // { "data/videos/start_portuguese-br.webm", "Videos/start_portuguese-br.webm" },
+  // { "data/videos/start_portuguese-br_classic.webm", "Videos/start_portuguese-br_classic.webm" },
 };
 #define VIDEO_OVERRIDE_N (sizeof(s_video_overrides) / sizeof(s_video_overrides[0]))
 
@@ -889,16 +903,17 @@ static int vpak_open_virtual(const char *path) {
   const uint8_t *resident = pak_resident_buf(c->path, &resident_size);
   if (!resident || (off_t)hit->filestart + (off_t)hit->filesize > resident_size) return -1;
 
-  // open_fake() only ever reaches vpak_open_virtual() for a .webm path once
-  // video_override_real() (see the PakAlias-style table above) has already
-  // been tried and found nothing on the SD card -- so this is the fallback
-  // for a missing override, same stub policy as vpak_materialize()'s own: an
-  // "empty" window (size 0) makes playwebm() fail its container-header check
-  // immediately, same as an empty materialized file would, without decoding
-  // anything.
-  int is_stub = ends_with_ci(path, ".webm");
-  off_t winsize = is_stub ? 0 : (off_t)hit->filesize;
-  const uint8_t *winbuf = is_stub ? NULL : resident + hit->filestart;
+  // Trying the original, native 1920x1080 bytes directly (s_video_overrides[]
+  // emptied for this test -- see its own comment): no stubbing here anymore,
+  // this window serves whatever the pak actually has for ANY path, webm
+  // included. Native 1080p software VP8 decode was already measured
+  // stalling rendering for as long as minutes (ffprobe + on-device timing,
+  // resolution -- not file size or duration -- driving per-frame decode
+  // cost), so this is expected to reproduce that unless something else
+  // changed; if it does, the fix is reverting this and re-populating
+  // s_video_overrides[], not touching this window logic again.
+  off_t winsize = (off_t)hit->filesize;
+  const uint8_t *winbuf = resident + hit->filestart;
 
   int fd = open(c->path, O_RDONLY | O_BINARY);
   if (fd < 0) return -1;
@@ -922,8 +937,8 @@ static int vpak_open_virtual(const char *path) {
   g_virtwin_opens++;
   mutexUnlock(&s_virtwin_lock);
 
-  debugPrintf("[vpak] \"%s\": virtual window into %s @ %u (%lld bytes)%s\n",
-              path, c->path, hit->filestart, (long long)winsize, is_stub ? " (webm, stubbed empty)" : "");
+  debugPrintf("[vpak] \"%s\": virtual window into %s @ %u (%lld bytes)\n",
+              path, c->path, hit->filestart, (long long)winsize);
   return fd;
 }
 
@@ -1012,14 +1027,14 @@ static int vpak_materialize(const char *path) {
   int dst = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666);
   if (dst < 0) { debugPrintf("[vpak] materialize(\"%s\"): create failed\n", path); return -1; }
 
-  if (ends_with_ci(path, ".webm")) {
-    close(dst);
-    if (rename(tmp, path) != 0) { unlink(tmp); return -1; }
-    dircache_invalidate_parent_of(path); // a new file just appeared in path's parent
-    debugPrintf("[vpak] \"%s\": intro/splash video, stubbed empty instead of decoding %u bytes\n",
-                path, hit->filesize);
-    return 0;
-  }
+  // No more unconditional webm stubbing here either (see
+  // vpak_open_virtual()'s matching comment) -- trying the original, native
+  // resolution. vpak_open_virtual() being tried first in open_fake() means
+  // this fallback path is only ever reached for a webm if that virtual
+  // window failed for some other reason (resident buffer unavailable, its
+  // table full), so falling through to a real byte-for-byte copy here too
+  // keeps both paths consistent instead of one serving real bytes and the
+  // other silently stubbing.
 
   int src = vpak_source_fd(c);
   if (src < 0) { close(dst); unlink(tmp); return -1; }
@@ -1074,12 +1089,13 @@ void vpak_extract_all(VpakExtractProgressFn progress) {
       struct stat st;
       int need = 1;
       if (stat(e->name, &st) == 0) {
-        // A stubbed webm is deliberately 0 bytes on disk (see
-        // vpak_materialize()'s own webm branch above) -- that IS the
-        // correct, fully-materialized state for one, not a sign it needs
-        // re-copying.
-        int is_stub = ends_with_ci(e->name, ".webm");
-        if (is_stub ? st.st_size == 0 : (uint32_t)st.st_size == e->filesize) need = 0;
+        // webm entries are no longer stubbed (see vpak_materialize()'s own
+        // comment) -- a correct size match now means the same thing for
+        // every file, including a leftover 0-byte stub from an earlier
+        // build/test: that no longer matches e->filesize, so it correctly
+        // gets re-extracted with the real bytes instead of being mistaken
+        // for already-done.
+        if ((uint32_t)st.st_size == e->filesize) need = 0;
       }
       if (need) vpak_materialize(e->name);
       done++;

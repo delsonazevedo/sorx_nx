@@ -36,8 +36,17 @@ ASFLAGS	:=	-g $(ARCH)
 # (glClear, glBindTexture, glTexParameteri, ...) -- SDL2's Android renderer
 # backend links against both (GLES1 immediate-mode path + GLES2 shader path),
 # so let the linker take the first definition rather than fail on duplicates.
+# --wrap the newlib allocator entry points: gpuarena.c routes nouveau's own
+# page-aligned GPU buffer allocations (memalign(0x1000, ...), used for every
+# GL texture/framebuffer) into a dedicated contiguous arena instead of
+# newlib's general heap, which repeated texture churn (video playback
+# creating/destroying real GL textures per clip) fragments badly enough to
+# eventually fail a large page-aligned request -- confirmed on real hardware
+# to surface as an unexplained hang deep inside a real glDrawArrays() call.
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) \
-			-Wl,--allow-multiple-definition -Wl,-Map,$(notdir $*.map)
+			-Wl,--allow-multiple-definition -Wl,-Map,$(notdir $*.map) \
+			-Wl,--wrap,malloc -Wl,--wrap,calloc -Wl,--wrap,realloc \
+			-Wl,--wrap,memalign -Wl,--wrap,free
 
 # libSDL2.so renders through mesa (GLESv1_CM for its fixed-function path,
 # GLESv2 for its shader path) and EGL (dlopen'd by name -- see egl_shim.c).
