@@ -284,7 +284,6 @@ static PadState pad;
 
 static struct { u64 sw; int key; } s_btnmap[] = {
   { HidNpadButton_A,      AKEYCODE_A },       // FIRE1 -> confirm/attack
-  { HidNpadButton_B,      AKEYCODE_ESCAPE },  // cancel/back
   { HidNpadButton_X,      AKEYCODE_S },       // FIRE2
   { HidNpadButton_Y,      AKEYCODE_Z },       // FIRE3
   { HidNpadButton_L,      AKEYCODE_X },       // FIRE4
